@@ -1,41 +1,46 @@
 import sys
 import socket
+import threading
 from time import sleep
-from utils import (cv2, image_to_bts)
+from utils import cv2, image_to_bts
 
-s = socket.socket()
-cap = cv2.VideoCapture(0)
-
-if len(sys.argv) == 2:
-    PORT = sys.argv[1]
-    if not(PORT.isdigit()):
-        print("port must be number")
-        sys.exit()
-    PORT = int(PORT)
-else:
-    PORT = input("PORT: ")
-    if not(PORT.isdigit()):
-        print("port must be number")
-        sys.exit()
-    PORT = int(PORT)
-
-s.bind(("", PORT))
-print(f"ADDRESS BINDED ON PORT {PORT}")
-s.listen()
-print("LISTENING...")
-
-conn, raddr = s.accept()
-print(f"Connection established with {raddr[0]}:{raddr[1]}")
-
-while True:
+def handle_client(conn, addr):
     try:
-        ret, frame = cap.read()
-        img = image_to_bts(frame)
-        conn.send(img)
-        conn.send(b"DONE")
-        sleep(0.1)
+        print(f"Connection established with {addr[0]}:{addr[1]}")
+
+        while True:
+            ret, frame = cap.read()
+            img = image_to_bts(frame)
+            conn.sendall(img + b"DONE")
+            sleep(0.1)
     except Exception as e:
-        s.close()
+        print(f"Errore nella gestione del client {addr}: {e}")
+    finally:
         conn.close()
-        print(f"Errore: {e}")
-        sys.exit(1)
+
+if __name__ == "__main__":
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+
+    if len(sys.argv) == 2 and sys.argv[1].isdigit():
+        PORT = int(sys.argv[1])
+    else:
+        print("Usage: python server.py <PORT>")
+        sys.exit()
+
+    s.bind(("localhost", PORT))
+    print(f"Server listening on port {PORT}")
+
+    cap = cv2.VideoCapture(0)
+    
+    try:
+        s.listen(5)
+        while True:
+            conn, addr = s.accept()
+            client_thread = threading.Thread(target=handle_client, args=(conn, addr))
+            client_thread.start()
+    except KeyboardInterrupt:
+        print("Server stopped by the user")
+    finally:
+        s.close()
+        cap.release()
