@@ -1,22 +1,22 @@
-import sys
 import socket
 import threading
 from time import sleep
 import PySimpleGUI as sg
+from queue import Queue
 from threading import Thread
 from utils import cv2, png_bytes_to_cv2_array
 
 class Client:
     def __init__(self):
         self.window = None
-        self.image_data = None
-        self.lock = threading.Lock()
+        self.image_queue = Queue()
 
     def gui(self):
+        sg.theme('DarkTeal2')
         layout = [
             [sg.Image(expand_x=True, expand_y=True, key="-img-")]
         ]
-        self.window = sg.Window("Test", layout=layout, size=(800, 800), finalize=True)
+        self.window = sg.Window("Test", layout=layout, size=(1280, 720), finalize=True)
 
         while True:
             event, values = self.window.read(timeout=16)
@@ -24,13 +24,11 @@ class Client:
                 break
 
             # Aggiorna l'immagine solo se sono disponibili nuovi dati
-            if self.image_data:
-                img_bytes = self.image_data
+            if not self.image_queue.empty():
+                img_bytes = self.image_queue.get()
                 self.window["-img-"].update(data=img_bytes)
-                self.image_data = None  # Resetta i dati dell'immagine
 
         self.window.close()
-        self.s.close()
         
 
     def handle_tcp(self, host, port):
@@ -41,25 +39,25 @@ class Client:
                 while True:
                     img = b""
                     while True:
-                        data = self.s.recv(8192)  # Aumenta le dimensioni del buffer di ricezione
+                        data = self.s.recv(8192)
                         if not data:
-                            raise ConnectionError("Connection lost")
+                            print("Connection lost")
+                            self.image_queue.put(None)  # Segnala alla GUI la chiusura della connessione
+                            return
                         img += data
                         if data.endswith(b"DONE"):
                             break
 
-                    # Decodifica l'immagine solo se sono disponibili nuovi dati
-                    with self.lock:
-                        self.image_data = self.decode_image(img)
+                    img_bytes = self.decode_image(img)
+                    self.image_queue.put(img_bytes)
         except Exception as e:
             print(f"Error:\n{e}")
-            if self.window:
-                self.window.close()
-            sys.exit()
+            self.image_queue.put(None)  # Segnala alla GUI l'errore
 
     def decode_image(self, img_data):
         img = png_bytes_to_cv2_array(img_data)
         img = cv2.flip(img, 1)
+        img = cv2.resize(img, self.window["-img-"].get_size(), interpolation=cv2.INTER_NEAREST)
         img_bytes = cv2.imencode(".png", img)[1].tobytes()
         return img_bytes
 
@@ -67,7 +65,7 @@ if __name__ == "__main__":
     client = Client()
 
     gui_thread = Thread(target=client.gui)
-    tcp_thread = Thread(target=client.handle_tcp, args=("127.0.0.1", 4444))
+    tcp_thread = Thread(target=client.handle_tcp, args=(input("ADDR: "), int(input("PORT: "))))
 
     tcp_thread.start()
     sleep(0.2)
