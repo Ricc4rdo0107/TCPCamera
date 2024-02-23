@@ -3,20 +3,28 @@ import socket
 import threading
 from time import sleep
 import PySimpleGUI as sg
+from queue import Queue
 from threading import Thread
-from utils import cv2, png_bytes_to_cv2_array
+from utils import cv2, png_bytes_to_cv2_array, black_image_bytes
 
 class Client:
     def __init__(self):
         self.window = None
-        self.image_data = None
-        self.lock = threading.Lock()
+        self.image_queue = Queue()
 
     def gui(self):
+        sg.theme('DarkTeal2')
+        """
+        titlebar = [
+            [ sg.Text("Hello World"),sg.Push(),sg.Button("X",key=sg.TITLEBAR_CLOSE_KEY) ]
+        ]
+        """
+
         layout = [
+            #[ sg.Col(titlebar, metadata=sg.TITLEBAR_METADATA_MARKER) ],
             [sg.Image(expand_x=True, expand_y=True, key="-img-")]
         ]
-        self.window = sg.Window("Test", layout=layout, size=(800, 800), finalize=True)
+        self.window = sg.Window("Test", layout=layout, size=(1280, 720), finalize=True)#, no_titlebar=True)
 
         while True:
             event, values = self.window.read(timeout=16)
@@ -24,51 +32,76 @@ class Client:
                 break
 
             # Aggiorna l'immagine solo se sono disponibili nuovi dati
-            if self.image_data:
-                img_bytes = self.image_data
+            if not self.image_queue.empty():
+                img_bytes = self.image_queue.get()
                 self.window["-img-"].update(data=img_bytes)
-                self.image_data = None  # Resetta i dati dell'immagine
 
         self.window.close()
-        self.s.close()
         
 
     def handle_tcp(self, host, port):
         try:
             with socket.socket() as self.s:
-                self.s.connect((host, port))
+                for i in range(5):
+                    try:
+                        self.s.connect((host, port))
+                    except:
+                        print(f"Connection refused {i+1}", end="\r")
+                        sleep(0.5)
+                    else:
+                        connected = True
 
-                while True:
+                while connected:
                     img = b""
                     while True:
-                        data = self.s.recv(8192)  # Aumenta le dimensioni del buffer di ricezione
+                        data = self.s.recv(8192)
                         if not data:
-                            raise ConnectionError("Connection lost")
+                            print("Connection lost")
+                            self.image_queue.put(None)
+
+                            self.window.close()
+                            self.s.close()
+                            sys.exit()
                         img += data
                         if data.endswith(b"DONE"):
                             break
 
-                    # Decodifica l'immagine solo se sono disponibili nuovi dati
-                    with self.lock:
-                        self.image_data = self.decode_image(img)
+                    img_bytes = self.decode_image(img)
+                    self.image_queue.put(img_bytes)
         except Exception as e:
             print(f"Error:\n{e}")
-            if self.window:
-                self.window.close()
-            sys.exit()
+            self.image_queue.put(None)
 
     def decode_image(self, img_data):
-        img = png_bytes_to_cv2_array(img_data)
-        img = cv2.flip(img, 1)
-        img_bytes = cv2.imencode(".png", img)[1].tobytes()
-        return img_bytes
+        try:
+            img = png_bytes_to_cv2_array(img_data)
+            img = cv2.flip(img, 1)
+            img = cv2.resize(img, self.window["-img-"].get_size(), interpolation=cv2.INTER_NEAREST)
+            img_bytes = cv2.imencode(".png", img)[1].tobytes()
+            return img_bytes
+        except:
+            return black_image_bytes
 
 if __name__ == "__main__":
     client = Client()
+    
+    if len(sys.argv) == 3:
+        HOST = sys.argv[1]
+        if sys.argv[2].isdigit():
+            PORT = int(sys.argv[2])
+            if PORT > 65535 or PORT < 1025:
+                print("Usage: port must be below 65535 and above 1025")
+                sys.exit()
+    else:
+        print("Usage: python client.py <host> <port>")
+        sys.exit()
 
     gui_thread = Thread(target=client.gui)
-    tcp_thread = Thread(target=client.handle_tcp, args=("127.0.0.1", 4444))
+    tcp_thread = Thread(target=client.handle_tcp, args=(HOST, PORT))
+    #input("ADDR: "), int(input("PORT: "))
 
-    tcp_thread.start()
-    sleep(0.2)
+
     gui_thread.start()
+    sleep(0.4)
+    tcp_thread.start()
+    
