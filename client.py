@@ -14,29 +14,22 @@ class Client:
 
     def gui(self):
         sg.theme('DarkTeal2')
-        """
-        titlebar = [
-            [ sg.Text("Hello World"),sg.Push(),sg.Button("X",key=sg.TITLEBAR_CLOSE_KEY) ]
-        ]
-        """
-
         layout = [
-            #[ sg.Col(titlebar, metadata=sg.TITLEBAR_METADATA_MARKER) ],
             [sg.Image(expand_x=True, expand_y=True, key="-img-")]
         ]
-        self.window = sg.Window("Test", layout=layout, size=(1280, 720), finalize=True)#, no_titlebar=True)
+        self.window = sg.Window("Test", layout=layout, size=(1280, 720), finalize=True, resizable=True)#, no_titlebar=True)
 
         while True:
             event, values = self.window.read(timeout=16)
             if event == sg.WIN_CLOSED:
                 break
 
-            # Aggiorna l'immagine solo se sono disponibili nuovi dati
             if not self.image_queue.empty():
                 img_bytes = self.image_queue.get()
                 self.window["-img-"].update(data=img_bytes)
 
         self.window.close()
+        self.s.close()
         
 
     def handle_tcp(self, host, port):
@@ -98,10 +91,7 @@ if __name__ == "__main__":
 
     gui_thread = Thread(target=client.gui)
     tcp_thread = Thread(target=client.handle_tcp, args=(HOST, PORT))
-    #input("ADDR: "), int(input("PORT: "))
-
 
     gui_thread.start()
     sleep(0.4)
     tcp_thread.start()
-    
