@@ -14,7 +14,7 @@ def handle_client(conn, addr):
             conn.sendall(img + b"DONE")
             sleep(0.1)
     except Exception as e:
-        print(f"Errore nella gestione del client {addr}: {e}")
+        print(f"Error while handling client {addr}: {e}")
     finally:
         conn.close()
 
@@ -22,14 +22,15 @@ if __name__ == "__main__":
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 
-    if len(sys.argv) == 2 and sys.argv[1].isdigit():
-        PORT = int(sys.argv[1])
+    if len(sys.argv) == 3 and sys.argv[2].isdigit():
+        HOST = sys.argv[1]
+        PORT = int(sys.argv[2])
     else:
-        print("Usage: python server.py <PORT>")
+        print("Usage: python server.py <HOST> <PORT>")
         sys.exit()
 
-    s.bind(("localhost", PORT))
-    print(f"Server listening on port {PORT}")
+    s.bind((HOST, PORT))
+    print(f"Server listening on {HOST}:{PORT}")
 
     cap = cv2.VideoCapture(0)
     
