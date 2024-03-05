@@ -2,7 +2,7 @@ import sys
 import socket
 import threading
 from time import sleep
-from utils import cv2, image_to_bts
+from utils import cv2, image_to_bts, black_image_bytes
 
 def handle_client(conn, addr):
     try:
@@ -10,7 +10,11 @@ def handle_client(conn, addr):
 
         while True:
             ret, frame = cap.read()
-            img = image_to_bts(frame)
+            if ret:
+                img = image_to_bts(frame)
+            else:
+                img = black_image_bytes
+                print("Camera problem.. sending black image bytes")
             conn.sendall(img + b"DONE")
             sleep(0.1)
     except Exception as e:
