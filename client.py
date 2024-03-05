@@ -12,12 +12,20 @@ class Client:
         self.window = None
         self.image_queue = Queue()
 
+    def quit_elegant(self, err=None):
+        try:
+            self.window.close()
+            self.s.close()
+            sys.exit(1)
+        except:
+            sys.exit(1)
+
     def gui(self):
         sg.theme('DarkTeal2')
         layout = [
             [sg.Image(expand_x=True, expand_y=True, key="-img-")]
         ]
-        self.window = sg.Window("Test", layout=layout, size=(1280, 720), finalize=True, resizable=True)#, no_titlebar=True)
+        self.window = sg.Window("Client TCP Camera", layout=layout, size=(1280, 720), finalize=True, resizable=True)#, no_titlebar=True)
 
         while True:
             event, values = self.window.read(timeout=16)
@@ -28,11 +36,11 @@ class Client:
                 img_bytes = self.image_queue.get()
                 self.window["-img-"].update(data=img_bytes)
 
-        self.window.close()
-        self.s.close()
+        self.quit_elegant()
         
 
     def handle_tcp(self, host, port):
+        connected = False
         try:
             with socket.socket() as self.s:
                 for i in range(5):
@@ -61,6 +69,8 @@ class Client:
 
                     img_bytes = self.decode_image(img)
                     self.image_queue.put(img_bytes)
+                else:
+                    self.quit_elegant()
         except Exception as e:
             print(f"Error:\n{e}")
             self.image_queue.put(None)
@@ -84,10 +94,10 @@ if __name__ == "__main__":
             PORT = int(sys.argv[2])
             if PORT > 65535 or PORT < 1025:
                 print("Usage: port must be below 65535 and above 1025")
-                sys.exit()
+                sys.exit(1)
     else:
         print("Usage: python client.py <host> <port>")
-        sys.exit()
+        sys.exit(1)
 
     gui_thread = Thread(target=client.gui)
     tcp_thread = Thread(target=client.handle_tcp, args=(HOST, PORT))
